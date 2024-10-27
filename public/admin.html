@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Bookings</title>
+    <style>
+        table {
+            width: 80%;
+            margin: 20px auto;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+<body>
+    <h1 style="text-align: center;">User Bookings</h1>
+    <table id="bookingTable">
+        <thead>
+            <tr>
+                <th>Username</th>
+                <th>Slot Time</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <script>
+        // Function to load bookings for admin
+        async function loadBookings() {
+            const res = await fetch("/admin/bookings");
+            const bookings = await res.json();
+
+            const tableBody = document.getElementById("bookingTable").querySelector("tbody");
+            tableBody.innerHTML = ""; // Clear existing data
+
+            bookings.forEach((booking) => {
+                const row = document.createElement("tr");
+                row.innerHTML = `<td>${booking.username}</td><td>${booking.time_range}</td>`;
+                tableBody.appendChild(row);
+            });
+        }
+
+        // Load bookings on page load
+        window.onload = loadBookings;
+    </script>
+</body>
+</html>
