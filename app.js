@@ -9,6 +9,7 @@ require("dotenv").config();
 const app = express();
 const PORT = 8001;
 const SECRET_KEY = process.env.SECRET_KEY || "supersecretkey";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "adminpass";
 
 // Middleware
 app.use(bodyParser.json());
@@ -40,7 +41,6 @@ db.serialize(() => {
     )
   `);
 
-  // Insert time slots (8 AM to 4 PM, 30-minute intervals)
   const timeSlots = [];
   for (let hour = 8; hour < 16; hour++) {
     timeSlots.push(`${hour}:00 - ${hour}:30`, `${hour}:30 - ${hour + 1}:00`);
@@ -61,10 +61,39 @@ const authenticate = (req, res, next) => {
 
   jwt.verify(token, SECRET_KEY, (err, decoded) => {
     if (err) return res.status(401).json({ message: "Invalid token" });
-    req.userId = decoded.id; // Store user ID for further use
+    req.userId = decoded.id;
     next();
   });
 };
+
+// Admin Login Route
+app.post("/admin/login", (req, res) => {
+  const { password } = req.body;
+  if (password === ADMIN_PASSWORD) {
+    const token = generateToken({ id: "admin" });
+    return res.json({ message: "Admin login successful", token });
+  } else {
+    return res.status(401).json({ message: "Invalid admin password" });
+  }
+});
+
+// Admin Dashboard Route
+app.get("/admin/dashboard", authenticate, (req, res) => {
+  db.all(
+    `
+    SELECT users.username, slots.time_range 
+    FROM users 
+    JOIN slots ON users.booked_slot = slots.id
+    WHERE users.booked_slot IS NOT NULL
+    `,
+    [],
+    (err, bookings) => {
+      if (err) return res.status(500).json({ message: "Database error" });
+      
+      res.json({ bookings });
+    }
+  );
+});
 
 // Register Route
 app.post("/register", async (req, res) => {
@@ -94,11 +123,21 @@ app.post("/login", (req, res) => {
   });
 });
 
-// Get Slots (Authenticated)
+// Get Slots or Booked Slot (Authenticated)
 app.get("/slots", authenticate, (req, res) => {
-  db.all(`SELECT * FROM slots`, [], (err, slots) => {
-    if (err) return res.status(500).json({ message: "Error fetching slots." });
-    res.json(slots);
+  db.get(`SELECT booked_slot FROM users WHERE id = ?`, [req.userId], (err, user) => {
+    if (err) return res.status(500).json({ message: "Database error." });
+    if (user.booked_slot) {
+      db.get(`SELECT * FROM slots WHERE id = ?`, [user.booked_slot], (err, slot) => {
+        if (err) return res.status(500).json({ message: "Database error." });
+        res.json({ bookedSlot: slot });
+      });
+    } else {
+      db.all(`SELECT * FROM slots`, [], (err, slots) => {
+        if (err) return res.status(500).json({ message: "Error fetching slots." });
+        res.json({ slots });
+      });
+    }
   });
 });
 
@@ -120,7 +159,6 @@ app.post("/book", authenticate, (req, res) => {
         return res.status(400).json({ message: "Slot unavailable." });
       }
 
-      // Update the count and user's booked slot
       db.run(`UPDATE slots SET current_count = current_count + 1 WHERE id = ?`, [slotId]);
       db.run(`UPDATE users SET booked_slot = ? WHERE id = ?`, [slotId, req.userId]);
       res.json({ message: "Slot booked successfully." });
